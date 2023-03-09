@@ -1,6 +1,6 @@
 {
-	"name": "@404-software/s3-upload-image",
-	"version": "1.0.0",
+	"name": "@404-software/s3-upload",
+	"version": "1.0.1",
 	"main": "src/index.ts",
 	"scripts": {
 		"dev": "tsx watch src/index.ts"

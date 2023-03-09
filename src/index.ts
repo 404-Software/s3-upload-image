@@ -5,9 +5,9 @@ import stream from 'stream'
 
 const client = new S3Client({ region: 'me-south-1' })
 
-const IMAGES_S3_BUCKET = process.env.IMAGES_S3_BUCKET
+const FILES_S3_BUCKET = process.env.FILES_S3_BUCKET
 
-function getImageKey(key: string) {
+function getFileKey(key: string) {
 	return key.split('.com/')[1]
 }
 
@@ -25,7 +25,7 @@ async function uploadStream({
 	bucket,
 }: UploadStream) {
 	const Key = `${folder}/${Date.now()}-${filename}`
-	const Bucket = IMAGES_S3_BUCKET || bucket
+	const Bucket = FILES_S3_BUCKET || bucket
 
 	if (!Bucket) throw new Error('No bucket provided')
 
@@ -54,30 +54,30 @@ async function uploadStream({
 
 export interface SingleUpload {
 	folder: string
-	image: Image
-	oldImage?: string | null
+	file: File
+	oldFile?: string | null
 	bucket?: string
 }
 
 export const singleUpload = async ({
 	folder,
-	image,
-	oldImage,
+	file,
+	oldFile,
 	bucket,
 }: SingleUpload) => {
-	if (typeof image === 'string') return image
+	if (typeof file === 'string') return file
 
-	if (!image?.file) {
-		if (oldImage) return oldImage
+	if (!file?.file) {
+		if (oldFile) return oldFile
 
-		throw Error('MALFORMED_INPUT: No image provided')
+		throw Error('MALFORMED_INPUT: No file provided')
 	}
 
-	const { createReadStream } = image.file
+	const { createReadStream } = file.file
 
 	const { Location } = await uploadStream({
 		readableStream: createReadStream(),
-		filename: image.file.filename,
+		filename: file.file.filename,
 		folder,
 		bucket,
 	})
@@ -87,28 +87,28 @@ export const singleUpload = async ({
 
 export interface MultiUpload {
 	folder: string
-	images: Array<string | Image>
-	oldImages?: string[]
+	files: Array<string | File>
+	oldFiles?: string[]
 	bucket?: string
 }
 
 export const multiUpload = async ({
 	folder,
-	images,
-	oldImages,
+	files,
+	oldFiles,
 	bucket,
 }: MultiUpload) => {
-	const newImages = await Promise.all(
-		images.map(async image => {
-			if (typeof image === 'string') return image
+	const newFiles = await Promise.all(
+		files.map(async file => {
+			if (typeof file === 'string') return file
 
-			const { createReadStream } = image.file
+			const { createReadStream } = file.file
 
 			return new Promise<string>((resolve, reject) =>
 				uploadStream({
 					readableStream: createReadStream(),
 					folder,
-					filename: image.file.filename,
+					filename: file.file.filename,
 					bucket,
 				}).then(({ Location }) =>
 					Location ? resolve(Location) : reject('error'),
@@ -117,23 +117,23 @@ export const multiUpload = async ({
 		}),
 	)
 
-	await deleteImages({
-		images: oldImages?.filter(image => !newImages.includes(image)),
+	await deleteFiles({
+		files: oldFiles?.filter(file => !newFiles.includes(file)),
 		bucket,
 	})
 
-	return newImages
+	return newFiles
 }
 
-interface DeleteImage {
-	image?: string | null
+interface DeleteFile {
+	file?: string | null
 	bucket?: string
 }
 
-export const deleteImage = async ({ image, bucket }: DeleteImage) => {
-	if (!image) return
+export const deleteFile = async ({ file, bucket }: DeleteFile) => {
+	if (!file) return
 
-	const key = getImageKey(image)
+	const key = getFileKey(file)
 
 	const command = new DeleteObjectCommand({
 		Bucket: bucket,
@@ -143,22 +143,22 @@ export const deleteImage = async ({ image, bucket }: DeleteImage) => {
 	await client.send(command)
 }
 
-export interface DeleteImages {
-	images?: Array<string | undefined>
+export interface DeleteFiles {
+	files?: Array<string | undefined>
 	bucket?: string
 }
 
-export const deleteImages = async ({ images, bucket }: DeleteImages) => {
-	if (!images) return
+export const deleteFiles = async ({ files, bucket }: DeleteFiles) => {
+	if (!files) return
 
-	images.forEach(async image => {
-		if (!image) return
+	files.forEach(async file => {
+		if (!file) return
 
-		await deleteImage({ image, bucket })
+		await deleteFile({ file, bucket })
 	})
 }
 
-type Image =
+type File =
 	| {
 			file: { createReadStream: () => fs.ReadStream; filename: string }
 	  }
