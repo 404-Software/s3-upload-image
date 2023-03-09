@@ -8,7 +8,9 @@ const client = new S3Client({ region: 'me-south-1' })
 const FILES_S3_BUCKET = process.env.FILES_S3_BUCKET
 
 function getFileKey(key: string) {
-	return key.split('.com/')[1]
+	const split = key.split('.com/')
+
+	return split.length === 2 ? split[1] : key
 }
 
 export interface UploadStream {
