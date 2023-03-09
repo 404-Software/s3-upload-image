@@ -1,0 +1,23 @@
+{
+	"name": "@404-software/s3-upload-image",
+	"version": "1.0.0",
+	"main": "src/index.ts",
+	"scripts": {
+		"dev": "tsx watch src/index.ts"
+	},
+	"license": "MIT",
+	"devDependencies": {
+		"@404-software/eslint-config": "^1.0.13",
+		"@types/node": "^18.14.6",
+		"eslint": "^8.35.0",
+		"prettier": "^2.8.4",
+		"tsx": "^3.12.3"
+	},
+	"eslintConfig": {
+		"extends": "@404-software/eslint-config"
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.287.0",
+		"@aws-sdk/lib-storage": "^3.287.0"
+	}
+}
