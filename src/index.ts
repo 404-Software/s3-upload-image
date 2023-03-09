@@ -3,9 +3,8 @@ import { Upload } from '@aws-sdk/lib-storage'
 import fs from 'fs'
 import stream from 'stream'
 
-const client = new S3Client({ region: 'me-south-1' })
-
 const FILES_S3_BUCKET = process.env.FILES_S3_BUCKET
+const FILES_S3_REGION = process.env.FILES_S3_REGION
 
 function getFileKey(key: string) {
 	const split = key.split('.com/')
@@ -13,151 +12,140 @@ function getFileKey(key: string) {
 	return split.length === 2 ? split[1] : key
 }
 
-export interface UploadStream {
-	folder: string
-	readableStream: fs.ReadStream
-	filename: string
-	bucket?: string
+const getRegion = (region?: string) => {
+	const clientRegion = FILES_S3_REGION || region
+
+	if (!clientRegion) throw new Error('No region provided as env var or config')
+
+	return clientRegion
 }
 
-async function uploadStream({
-	readableStream,
-	folder,
+const getBucket = (bucket?: string) => {
+	const clientBucket = FILES_S3_BUCKET || bucket
+
+	if (!clientBucket) throw new Error('No bucket provided as env var or config')
+
+	return clientBucket
+}
+
+type Config = {
+	region?: string
+	bucket?: string
+}
+export interface CreateUploadStream {
+	createReadStream: () => fs.ReadStream
+	filename: string
+	folder?: string
+	config?: Config
+}
+
+type UploadDone = {
+	Location: string
+	Key: string
+}
+
+async function createUploadStream({
+	createReadStream,
 	filename,
-	bucket,
-}: UploadStream) {
-	const Key = `${folder}/${Date.now()}-${filename}`
-	const Bucket = FILES_S3_BUCKET || bucket
-
-	if (!Bucket) throw new Error('No bucket provided')
-
+	folder,
+	config,
+}: CreateUploadStream) {
 	const passThroughStream = new stream.PassThrough()
 
 	const upload = new Upload({
-		client,
+		client: new S3Client({ region: getRegion(config?.region) }),
 		params: {
-			Bucket,
-			Key,
+			Bucket: getBucket(config?.bucket),
+			Key: `${folder ? `${folder}/` : ''}${Date.now()}-${filename}`,
 			Body: passThroughStream,
 			ACL: 'public-read',
 		},
 		leavePartsOnError: false,
 	})
 
-	readableStream.pipe(passThroughStream)
-
-	type UploadDone = {
-		Location: string
-		Key: string
-	}
+	createReadStream().pipe(passThroughStream)
 
 	return (await upload.done()) as UploadDone
 }
 
-export interface SingleUpload {
-	folder: string
+export interface UploadFile {
 	file: File
-	oldFile?: string | null
-	bucket?: string
+	folder?: string
+	config?: Config
 }
 
-export const singleUpload = async ({
-	folder,
-	file,
-	oldFile,
-	bucket,
-}: SingleUpload) => {
+export const uploadFile = async ({ file, folder, config }: UploadFile) => {
 	if (typeof file === 'string') return file
 
-	if (!file?.file) {
-		if (oldFile) return oldFile
+	const { createReadStream, filename } = file.file
 
-		throw Error('MALFORMED_INPUT: No file provided')
-	}
-
-	const { createReadStream } = file.file
-
-	const { Location } = await uploadStream({
-		readableStream: createReadStream(),
-		filename: file.file.filename,
+	const { Location } = await createUploadStream({
+		createReadStream,
+		filename,
 		folder,
-		bucket,
+		config,
 	})
 
 	return Location
 }
 
-export interface MultiUpload {
-	folder: string
+export interface UploadFiles {
 	files: Array<string | File>
-	oldFiles?: string[]
-	bucket?: string
+	folder?: string
+	config?: Config
 }
 
-export const multiUpload = async ({
-	folder,
-	files,
-	oldFiles,
-	bucket,
-}: MultiUpload) => {
-	const newFiles = await Promise.all(
+export const uploadFiles = async ({ files, folder, config }: UploadFiles) =>
+	await Promise.all(
 		files.map(async file => {
 			if (typeof file === 'string') return file
 
-			const { createReadStream } = file.file
+			const { createReadStream, filename } = file.file
 
 			return new Promise<string>((resolve, reject) =>
-				uploadStream({
-					readableStream: createReadStream(),
+				createUploadStream({
+					createReadStream,
 					folder,
-					filename: file.file.filename,
-					bucket,
-				}).then(({ Location }) =>
-					Location ? resolve(Location) : reject('error'),
-				),
+					filename,
+					config,
+				}).then(({ Location }) => (Location ? resolve(Location) : reject())),
 			)
 		}),
 	)
 
-	await deleteFiles({
-		files: oldFiles?.filter(file => !newFiles.includes(file)),
-		bucket,
-	})
-
-	return newFiles
-}
-
 interface DeleteFile {
-	file?: string | null
-	bucket?: string
+	file?: string
+	config?: Config
 }
 
-export const deleteFile = async ({ file, bucket }: DeleteFile) => {
-	if (!file) return
+export const deleteFile = async ({ file, config }: DeleteFile) => {
+	if (typeof file !== 'string') return
 
-	const key = getFileKey(file)
+	const client = new S3Client({ region: getRegion(config?.region) })
 
 	const command = new DeleteObjectCommand({
-		Bucket: bucket,
-		Key: key,
+		Bucket: getBucket(config?.bucket),
+		Key: getFileKey(file),
 	})
 
 	await client.send(command)
 }
 
 export interface DeleteFiles {
-	files?: Array<string | undefined>
-	bucket?: string
+	files?: string[]
+	config?: Config
 }
 
-export const deleteFiles = async ({ files, bucket }: DeleteFiles) => {
+export const deleteFiles = async ({ files, config }: DeleteFiles) => {
 	if (!files) return
 
-	files.forEach(async file => {
-		if (!file) return
+	await Promise.all(
+		files.map(async file => {
+			if (typeof file !== 'string') return
 
-		await deleteFile({ file, bucket })
-	})
+			await deleteFile({ file, config })
+		}),
+	)
 }
 
 type File =
