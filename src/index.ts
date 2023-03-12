@@ -35,6 +35,7 @@ type Config = {
 export interface CreateUploadStream {
 	createReadStream: () => fs.ReadStream
 	filename: string
+	mimetype: string
 	folder?: string
 	config?: Config
 }
@@ -47,6 +48,7 @@ type UploadDone = {
 async function createUploadStream({
 	createReadStream,
 	filename,
+	mimetype,
 	folder,
 	config,
 }: CreateUploadStream) {
@@ -59,6 +61,10 @@ async function createUploadStream({
 			Key: `${folder ? `${folder}/` : ''}${Date.now()}-${filename}`,
 			Body: passThroughStream,
 			ACL: 'public-read',
+
+			Metadata: {
+				'Content-Type': mimetype,
+			},
 		},
 		leavePartsOnError: false,
 	})
@@ -77,11 +83,12 @@ export interface UploadFile {
 export const uploadFile = async ({ file, folder, config }: UploadFile) => {
 	if (typeof file === 'string') return file
 
-	const { createReadStream, filename } = file.file
+	const { createReadStream, filename, mimetype } = file.file
 
 	const { Location } = await createUploadStream({
 		createReadStream,
 		filename,
+		mimetype,
 		folder,
 		config,
 	})
@@ -100,13 +107,14 @@ export const uploadFiles = async ({ files, folder, config }: UploadFiles) =>
 		files.map(async file => {
 			if (typeof file === 'string') return file
 
-			const { createReadStream, filename } = file.file
+			const { createReadStream, filename, mimetype } = file.file
 
 			return new Promise<string>((resolve, reject) =>
 				createUploadStream({
 					createReadStream,
 					folder,
 					filename,
+					mimetype,
 					config,
 				}).then(({ Location }) => (Location ? resolve(Location) : reject())),
 			)
@@ -150,6 +158,10 @@ export const deleteFiles = async ({ files, config }: DeleteFiles) => {
 
 type File =
 	| {
-			file: { createReadStream: () => fs.ReadStream; filename: string }
+			file: {
+				createReadStream: () => fs.ReadStream
+				filename: string
+				mimetype: string
+			}
 	  }
 	| string
