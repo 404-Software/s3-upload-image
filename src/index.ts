@@ -61,10 +61,7 @@ async function createUploadStream({
 			Key: `${folder ? `${folder}/` : ''}${Date.now()}-${filename}`,
 			Body: passThroughStream,
 			ACL: 'public-read',
-
-			Metadata: {
-				'Content-Type': mimetype,
-			},
+			ContentType: mimetype,
 		},
 		leavePartsOnError: false,
 	})
