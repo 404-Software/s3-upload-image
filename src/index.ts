@@ -5,6 +5,7 @@ import stream from 'stream'
 
 const FILES_S3_BUCKET = process.env.FILES_S3_BUCKET
 const FILES_S3_REGION = process.env.FILES_S3_REGION
+const FILES_S3_URL = process.env.FILES_S3_URL
 
 function getFileKey(key: string) {
 	const split = key.split('.com/')
@@ -32,10 +33,18 @@ function getBucket(bucket?: string) {
 	return clientBucket
 }
 
+function getUrl(url?: string) {
+	const clientUrl = FILES_S3_URL || url
+
+	return clientUrl
+}
+
 type Config = {
 	region?: string
 	bucket?: string
+	url?: string
 	keepOriginalFilename?: boolean
+	keepOriginalUrl?: boolean
 }
 export interface CreateUploadStream {
 	createReadStream: () => fs.ReadStream
@@ -57,6 +66,9 @@ async function createUploadStream({
 	folder,
 	config,
 }: CreateUploadStream) {
+	const url = getUrl(config?.url)
+	const bucket = getBucket(config?.bucket)
+
 	const passThroughStream = new stream.PassThrough()
 
 	const fileExtension = getExtension(filename)
@@ -64,7 +76,7 @@ async function createUploadStream({
 	const upload = new Upload({
 		client: new S3Client({ region: getRegion(config?.region) }),
 		params: {
-			Bucket: getBucket(config?.bucket),
+			Bucket: bucket,
 			Key: `${folder ? `${folder}/` : ''}${
 				config?.keepOriginalFilename
 					? filename
@@ -79,7 +91,17 @@ async function createUploadStream({
 
 	createReadStream().pipe(passThroughStream)
 
-	return (await upload.done()) as UploadDone
+	const uploaded = (await upload.done()) as UploadDone
+
+	return {
+		Location:
+			!url || config?.keepOriginalUrl
+				? uploaded.Location
+				: uploaded.Location.replace(
+						`${bucket}.s3.me-south-1.amazonaws.com`,
+						url,
+				  ),
+	}
 }
 
 export interface UploadFile {
