@@ -31,6 +31,7 @@ const getBucket = (bucket?: string) => {
 type Config = {
 	region?: string
 	bucket?: string
+	keepOriginalFilename?: boolean
 }
 export interface CreateUploadStream {
 	createReadStream: () => fs.ReadStream
@@ -58,7 +59,9 @@ async function createUploadStream({
 		client: new S3Client({ region: getRegion(config?.region) }),
 		params: {
 			Bucket: getBucket(config?.bucket),
-			Key: `${folder ? `${folder}/` : ''}${Date.now()}-${filename}`,
+			Key: `${folder ? `${folder}/` : ''}${
+				config?.keepOriginalFilename ? filename : Date.now()
+			}`,
 			Body: passThroughStream,
 			ACL: 'public-read',
 			ContentType: mimetype,
