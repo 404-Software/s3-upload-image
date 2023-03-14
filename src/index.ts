@@ -12,7 +12,11 @@ function getFileKey(key: string) {
 	return split.length === 2 ? split[1] : key
 }
 
-const getRegion = (region?: string) => {
+function getExtension(filename: string) {
+	return `.${filename.split('.').pop()}`
+}
+
+function getRegion(region?: string) {
 	const clientRegion = FILES_S3_REGION || region
 
 	if (!clientRegion) throw new Error('No region provided as env var or config')
@@ -20,7 +24,7 @@ const getRegion = (region?: string) => {
 	return clientRegion
 }
 
-const getBucket = (bucket?: string) => {
+function getBucket(bucket?: string) {
 	const clientBucket = FILES_S3_BUCKET || bucket
 
 	if (!clientBucket) throw new Error('No bucket provided as env var or config')
@@ -55,12 +59,16 @@ async function createUploadStream({
 }: CreateUploadStream) {
 	const passThroughStream = new stream.PassThrough()
 
+	const fileExtension = getExtension(filename)
+
 	const upload = new Upload({
 		client: new S3Client({ region: getRegion(config?.region) }),
 		params: {
 			Bucket: getBucket(config?.bucket),
 			Key: `${folder ? `${folder}/` : ''}${
-				config?.keepOriginalFilename ? filename : Date.now()
+				config?.keepOriginalFilename
+					? filename
+					: `${Date.now()}${fileExtension}`
 			}`,
 			Body: passThroughStream,
 			ACL: 'public-read',
